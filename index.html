@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Laberinto del Amor</title>
+    <style>
+        .game-container {
+            display: grid;
+            grid-gap: 2px;
+        }
+
+        .wall {
+            background-color: #8B4513; /* Color marrón para las paredes */
+            width: 70px;
+            height: 88px;
+        }
+
+        /* Donde puedes cambiar las dimensiones de la imagen del jugador y del ganador */
+        .path,
+        .player,
+        .reward {
+            width: 70px;
+            height: 88px;
+            background-color: #f0f0f0; /* Un gris muy claro para el camino */
+        }
+
+        .player {
+            background-size: cover;
+            /* Donde puedes cambiar las imagenes y titulos y tambien el texto */
+            background-image: url('bonitaa.jpg'); /* Corregido a 'bonita.jpg' */
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        .reward {
+            background-size: cover;
+            /* Donde puedes cambiar las imagenes y titulos y tambien el texto */
+            background-image: url('ganador.jpg');
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        body {
+            background: black;
+            color: white;
+            font-family: Arial;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #grid {
+            position: relative;
+            width: fit-content;
+            height: fit-content;
+        }
+
+        .block {
+            border: 1px solid black;
+            position: absolute;
+            margin: 1px;
+            /* Donde puedes cambiar las dimensiones de la imagen del jugador y del ganador */
+            width: 70px;
+            height: 88px;
+            display: block;
+            background: #666; /* Color inicial de las celdas (paredes por defecto) */
+            box-sizing: border-box;
+            /* Transición para un movimiento más suave si cambias el color de fondo */
+            transition: background-color 0.1s linear;
+        }
+
+        /* Estilo para las celdas que son parte del laberinto (camino) */
+        .block.generated {
+            background: #f0f0f0; /* Un color claro para el camino */
+        }
+
+        /* Quitamos .visited y .path para eliminar la animación de "alumbrado" */
+
+        .block.left {
+            border-left: 1px solid transparent;
+        }
+
+        .block.right {
+            border-right: 1px solid transparent;
+        }
+
+        .block.bottom {
+            border-bottom: 1px solid transparent;
+        }
+
+        .block.top {
+            border-top: 1px solid transparent;
+        }
+
+        #prize-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            font-size: 2em;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        #prize-image-display {
+            width: 200px;
+            height: 200px;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            margin-top: 20px;
+            border-radius: 10px;
+            border: 2px solid #FFD700;
+        }
+
+        #prize-description-text {
+            margin-top: 15px;
+            font-size: 0.8em;
+            max-width: 80%;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1.1em;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+
+<body>
+
+    <p>Usa las flechas 🡠🡡🡢🡣 para moverte</p>
+    <button onclick="maze.reset();">Reiniciar</button>
+    <div id="grid"></div>
+
+    <div id="prize-screen">
+        <h1 id="congratulations-title"></h1>
+        <div id="prize-image-display"></div>
+        <p id="prize-description-text"></p>
+        <button onclick="maze.reset();">Jugar de Nuevo</button>
+    </div>
+
+    <script>
+        // Donde puedes cambiar las imagenes y titulos y tambien el texto
+        const congratulationsMessage = '¡Eres el amor de mi vida ❤️!';
+        const prizeDescription = 'Felicidades bonita, eres la ganadora!🥰🥰 ';
+
+        // Donde puedes cambiar las dimensiones de la imagen del jugador y del ganador
+        const GRID_SIZE_X = 7;
+        const GRID_SIZE_Y = 7;
+
+        // Donde puedes cambiar las imagenes y titulos y tambien el texto
+        const PLAYER_IMAGE_PATH = 'bonitaa.jpg'; // Corregido a 'bonita.jpg'
+        const REWARD_IMAGE_PATH = 'ganador.jpg';
+
+        // Donde puedes cambiar las dimensiones de la imagen del jugador y del ganador
+        const CELL_SIZE = 70;
+
+        const animationSpeed = 0; // Cambiado a 0 para carga instantánea
+
+
+        const grid = document.getElementById('grid');
+        const prizeScreen = document.getElementById('prize-screen');
+        const congratulationsTitle = document.getElementById('congratulations-title');
+        const prizeImageDisplay = document.getElementById('prize-image-display');
+        const prizeDescriptionText = document.getElementById('prize-description-text');
+
+        let cells = [];
+        let playerPosition = { x: 0, y: 0 };
+        let rewardPosition = { x: 0, y: 0 };
+        let generationInProgress = false;
+
+        const maze = {
+            init: function () {
+                grid.innerHTML = '';
+                cells = [];
+                generationInProgress = true;
+                prizeScreen.style.display = 'none';
+
+                grid.style.gridTemplateColumns = `repeat(${GRID_SIZE_X}, ${CELL_SIZE}px)`;
+                grid.style.width = `${GRID_SIZE_X * (CELL_SIZE + 2) - 2}px`;
+                grid.style.height = `${GRID_SIZE_Y * (CELL_SIZE + 2) - 2}px`;
+
+                for (let y = 0; y < GRID_SIZE_Y; y++) {
+                    cells[y] = [];
+                    for (let x = 0; x < GRID_SIZE_X; x++) {
+                        const block = document.createElement('div');
+                        block.classList.add('block');
+                        block.style.left = `${x * (CELL_SIZE + 2)}px`;
+                        block.style.top = `${y * (CELL_SIZE + 2)}px`;
+                        grid.appendChild(block);
+
+                        cells[y][x] = {
+                            element: block,
+                            x: x,
+                            y: y,
+                            visited: false,
+                            walls: {
+                                top: true,
+                                right: true,
+                                bottom: true,
+                                left: true
+                            }
+                        };
+                    }
+                }
+
+                this.generateMaze(cells[0][0]);
+            },
+
+            generateMaze: function (startCell) {
+                let stack = [];
+                let current = startCell;
+                current.visited = true;
+                current.element.classList.add('generated');
+                stack.push(current);
+
+                const animateGeneration = () => {
+                    if (stack.length === 0) {
+                        this.placePlayerAndReward();
+                        generationInProgress = false;
+                        return;
+                    }
+
+                    current = stack[stack.length - 1];
+                    const unvisitedNeighbors = this.getUnvisitedNeighbors(current);
+
+                    if (unvisitedNeighbors.length > 0) {
+                        const next = unvisitedNeighbors[Math.floor(Math.random() * unvisitedNeighbors.length)];
+                        this.removeWalls(current, next);
+                        next.visited = true;
+                        next.element.classList.add('generated');
+                        stack.push(next);
+                        current = next;
+                    } else {
+                        stack.pop();
+                    }
+
+                    // Siempre se llama una vez para generar el laberinto, pero con animationSpeed = 0
+                    // se ejecuta instantáneamente hasta el final sin retrasos.
+                    if (stack.length > 0 || animationSpeed > 0) { // Sigue si hay más por procesar o si hay animación
+                        setTimeout(animateGeneration, animationSpeed);
+                    } else { // Si ya no hay nada en el stack y animationSpeed es 0, termina
+                        this.placePlayerAndReward();
+                        generationInProgress = false;
+                    }
+                };
+
+                animateGeneration();
+            },
+
+            getUnvisitedNeighbors: function (cell) {
+                const neighbors = [];
+                const { x, y } = cell;
+
+                if (y > 0 && !cells[y - 1][x].visited) neighbors.push(cells[y - 1][x]);
+                if (x < GRID_SIZE_X - 1 && !cells[y][x + 1].visited) neighbors.push(cells[y][x + 1]);
+                if (y < GRID_SIZE_Y - 1 && !cells[y + 1][x].visited) neighbors.push(cells[y + 1][x]);
+                if (x > 0 && !cells[y][x - 1].visited) neighbors.push(cells[y][x - 1]);
+
+                return neighbors;
+            },
+
+            removeWalls: function (cell1, cell2) {
+                const dx = cell1.x - cell2.x;
+                const dy = cell1.y - cell2.y;
+
+                if (dx === 1) {
+                    cell1.walls.left = false;
+                    cell1.element.classList.add('left');
+                    cell2.walls.right = false;
+                    cell2.element.classList.add('right');
+                } else if (dx === -1) {
+                    cell1.walls.right = false;
+                    cell1.element.classList.add('right');
+                    cell2.walls.left = false;
+                    cell2.element.classList.add('left');
+                }
+
+                if (dy === 1) {
+                    cell1.walls.top = false;
+                    cell1.element.classList.add('top');
+                    cell2.walls.bottom = false;
+                    cell2.element.classList.add('bottom');
+                } else if (dy === -1) {
+                    cell1.walls.bottom = false;
+                    cell1.element.classList.add('bottom');
+                    cell2.walls.top = false;
+                    cell2.element.classList.add('top');
+                }
+            },
+
+            placePlayerAndReward: function () {
+                playerPosition = { x: 0, y: 0 };
+                const playerCell = cells[playerPosition.y][playerPosition.x].element;
+                playerCell.classList.add('player');
+                playerCell.style.backgroundImage = `url('${PLAYER_IMAGE_PATH}')`;
+
+                rewardPosition = { x: GRID_SIZE_X - 1, y: GRID_SIZE_Y - 1 };
+                const rewardCell = cells[rewardPosition.y][rewardPosition.x].element;
+                rewardCell.classList.add('reward');
+                rewardCell.style.backgroundImage = `url('${REWARD_IMAGE_PATH}')`;
+
+                this.updatePlayerPosition();
+                document.addEventListener('keydown', this.handleKeyPress);
+            },
+
+            updatePlayerPosition: function () {
+                cells.flat().forEach(cell => {
+                    cell.element.classList.remove('player');
+                    // Solo limpia la imagen si no es la celda del premio, para que no desaparezca
+                    if (cell.x !== rewardPosition.x || cell.y !== rewardPosition.y) {
+                         cell.element.style.backgroundImage = '';
+                    }
+                });
+
+                const currentPlayerCell = cells[playerPosition.y][playerPosition.x].element;
+                currentPlayerCell.classList.add('player');
+                currentPlayerCell.style.backgroundImage = `url('${PLAYER_IMAGE_PATH}')`;
+
+                if (playerPosition.x === rewardPosition.x && playerPosition.y === rewardPosition.y) {
+                    this.showPrizeScreen();
+                }
+            },
+
+            handleKeyPress: function (e) {
+                if (generationInProgress) return;
+
+                let newX = playerPosition.x;
+                let newY = playerPosition.y;
+                const currentCell = cells[playerPosition.y][playerPosition.x];
+
+                switch (e.key) {
+                    case 'ArrowUp':
+                        if (!currentCell.walls.top) {
+                            newY--;
+                        }
+                        break;
+                    case 'ArrowDown':
+                        if (!currentCell.walls.bottom) {
+                            newY++;
+                        }
+                        break;
+                    case 'ArrowLeft':
+                        if (!currentCell.walls.left) {
+                            newX--;
+                        }
+                        break;
+                    case 'ArrowRight':
+                        if (!currentCell.walls.right) {
+                            newX++;
+                        }
+                        break;
+                }
+
+                if (newX >= 0 && newX < GRID_SIZE_X && newY >= 0 && newY < GRID_SIZE_Y) {
+                    playerPosition.x = newX;
+                    playerPosition.y = newY;
+                    maze.updatePlayerPosition();
+                }
+            },
+
+            showPrizeScreen: function() {
+                congratulationsTitle.textContent = congratulationsMessage;
+                prizeImageDisplay.style.backgroundImage = `url('${REWARD_IMAGE_PATH}')`;
+                prizeDescriptionText.textContent = prizeDescription;
+                prizeScreen.style.display = 'flex';
+                document.removeEventListener('keydown', this.handleKeyPress);
+            },
+
+            reset: function () {
+                document.removeEventListener('keydown', this.handleKeyPress);
+                this.init();
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            maze.init();
+        });
+    </script>
+</body>
+
+</html>
